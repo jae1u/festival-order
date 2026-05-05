@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-4 text-secondary">🗄️ 정산 완료 내역 (아카이브)</h3>
+
+<!-- 💡 누적 총 매출 표시 박스 추가 -->
+<div class="card shadow border-0 bg-primary text-white mb-4">
+    <div class="card-body d-flex justify-content-between align-items-center py-4">
+        <h4 class="mb-0 fw-bold">누적 총 매출</h4>
+        <h2 class="mb-0 fw-bold">{{ "{:,}".format(total_revenue) }} 원</h2>
+    </div>
+</div>
+
+{% if not sessions %}
+<div class="alert alert-secondary">완료된 내역이 없습니다.</div>
+{% endif %}
+
+<div class="row">
+    {% for session in sessions %}
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm border-secondary bg-light">
+            <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Table {{ session.table_no }} (세션 #{{ session.session_id }})</h5>
+                <small>정산일시: {{ session.paid_at.strftime('%Y-%m-%d %H:%M') if session.paid_at else '-' }}</small>
+            </div>
+            <div class="card-body">
+                <div class="row mb-2 small text-muted">
+                    <div class="col-6">입장: {{ session.created_at.strftime('%H:%M') if session.created_at else '-' }}
+                    </div>
+                    <div class="col-6 text-end">이름: {{ session.customer_name or '-' }} ({{ session.organization or '-'
+                        }})</div>
+                </div>
+                <table class="table table-borderless table-sm mb-0">
+                    <tbody>
+                        {% for menu_name, data in session['items'].items() %}
+                        <tr>
+                            <td>{{ menu_name }} <span class="badge bg-secondary">x{{ data.quantity }}</span></td>
+                            <td class="text-end text-muted">{{ "{:,}".format(data.subtotal) }}원</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="text-end mt-2 fw-bold border-top pt-2">
+                    최종 결제 금액: {{ "{:,}".format(session.total_price) }}원
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

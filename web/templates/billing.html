@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-4 text-success">💰 테이블 현황 및 정산</h3>
+
+{% if not sessions %}
+<div class="alert alert-info">현재 이용 중인 테이블이 없습니다.</div>
+{% endif %}
+
+<div class="row">
+    {% for session in sessions %}
+    <div class="col-12 mb-4">
+        <div class="card shadow-sm border-success">
+            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Table {{ session.table_no }}</h4>
+                <div class="text-end">
+                    <small class="d-block">이름: {{ session.customer_name or '-' }}</small>
+                    <small class="d-block">소속: {{ session.organization or '-' }}</small>
+                    <small class="d-block">입장: {{ session.created_at.strftime('%H:%M') if session.created_at else '-'
+                        }}</small>
+                </div>
+            </div>
+            <div class="card-body">
+                <table class="table table-borderless table-sm mb-3">
+                    <thead>
+                        <tr class="border-bottom">
+                            <th>메뉴명</th>
+                            <th class="text-center">수량</th>
+                            <th class="text-end">금액</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for menu_name, data in session['items'].items() %}
+                        <tr>
+                            <td>{{ menu_name }}</td>
+                            <td class="text-center">{{ data.quantity }}개</td>
+                            <td class="text-end">{{ "{:,}".format(data.subtotal) }}원</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="d-flex justify-content-between align-items-end mt-3 pt-3 border-top">
+                    <h5 class="mb-0 fw-bold">총 금액: <span class="text-danger">{{ "{:,}".format(session.total_price)
+                            }}원</span></h5>
+
+                    <form action="{{ url_for('checkout', session_id=session.session_id) }}" method="POST"
+                        onsubmit="return confirm('Table {{ session.table_no }} 정산을 완료하시겠습니까?');">
+                        <button type="submit" class="btn btn-lg btn-primary fw-bold">정산 완료</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

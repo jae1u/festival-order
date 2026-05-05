@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+  <meta charset="UTF-8">
+  <title>주방 주문 관리시스템</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .main-container {
+      max-width: 700px;
+      margin: auto;
+    }
+  </style>
+  {% block extra_css %}{% endblock %}
+</head>
+
+<body class="bg-light">
+
+  <!-- 상단 네비게이션 바 -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container main-container">
+      <span class="navbar-brand">🍽️ 관리 시스템</span>
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <div class="navbar-nav me-auto">
+          <a class="nav-link" href="/admin/kitchen">👨‍🍳 주방</a>
+          <a class="nav-link" href="/admin/billing">💰 정산</a>
+          <a class="nav-link" href="/admin/menus">📋 메뉴 관리</a>
+          <a class="nav-link" href="/admin/history">🗄️ 내역</a>
+        </div>
+        <div class="navbar-nav">
+          <a class="nav-link text-danger" href="/admin/logout">로그아웃</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- 본문 영역 -->
+  <div class="container main-container">
+    {% block content %}{% endblock %}
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+
+</html>

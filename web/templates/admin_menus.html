@@ -1,0 +1,47 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h3 class="mb-4 text-warning">📋 메뉴 및 품절 관리</h3>
+
+<div class="card shadow-sm">
+    <div class="card-body p-0">
+        <table class="table table-hover mb-0 align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th class="ps-4">메뉴명</th>
+                    <th>가격</th>
+                    <th class="text-center pe-4">상태 (품절 여부)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for menu in menus %}
+                <tr class="{{ 'table-secondary text-muted' if menu.is_soldout else '' }}">
+                    <td class="ps-4 fw-bold">{{ menu.name }}</td>
+                    <td>{{ "{:,}".format(menu.price) }}원</td>
+                    <td class="text-center pe-4">
+                        <button class="btn btn-sm {{ 'btn-success' if menu.is_soldout else 'btn-danger' }}"
+                            onclick="toggleSoldout({{ menu.id }})">
+                            {{ '판매 재개' if menu.is_soldout else '품절 처리' }}
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function toggleSoldout(menuId) {
+        fetch('/admin/toggle_menu/' + menuId, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    window.location.reload();
+                }
+            });
+    }
+</script>
+{% endblock %}

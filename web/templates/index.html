@@ -1,0 +1,168 @@
+{% extends "layout.html" %}
+
+{% block extra_css %}
+<style>
+    .order-card {
+        margin-bottom: 20px;
+        transition: all 0.3s ease;
+    }
+
+    .completed-section {
+        background-color: #e9ecef;
+        padding: 20px;
+        border-radius: 10px;
+        margin-top: 40px;
+    }
+
+    .item-checkbox {
+        transform: scale(1.3);
+        margin-left: 10px;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<h3 class="mb-3 text-primary">진행 중인 주문</h3>
+<div class="row" id="incomplete-container">
+    {% for order in incomplete %}
+    <div class="col-12 order-card-wrapper" data-order-id="{{ order.id }}">
+        <div class="card shadow-sm border-primary order-card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>주문 #{{ order.id }}</strong>
+                    <span class="ms-3 badge bg-light text-dark">Table: {{ order.table_no }}</span>
+                </div>
+                <button class="btn btn-sm btn-danger py-0 px-2" onclick="deleteOrder({{ order.id }}, this)">🗑️
+                    삭제</button>
+            </div>
+            <div class="card-body">
+                <p class="text-muted small text-end mb-2">{{ order.order_time }}</p>
+                <ul class="list-group list-group-flush">
+                    {% for item in order['items'] %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center"
+                        data-item-id="{{ item.item_id }}">
+                        <span>{{ item.menu_name }} <span class="badge bg-info text-dark rounded-pill">x{{ item.quantity
+                                }}</span></span>
+                        <div>
+                            {% for i in range(item.checks_required) %}
+                            <input class="form-check-input item-checkbox" type="checkbox" {% if i <
+                                item.checks_completed %}checked{% endif %}
+                                onchange="handleCheck(this, {{ item.item_id }})">
+                            {% endfor %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="completed-section">
+    <h3 class="mb-3 text-secondary">완료된 주문</h3>
+    <div class="row" id="complete-container">
+        {% for order in complete %}
+        <div class="col-12 order-card-wrapper" data-order-id="{{ order.id }}">
+            <div class="card shadow-sm border-secondary order-card">
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
+                    <div>
+                        <strong>주문 #{{ order.id }}</strong>
+                        <span class="ms-3 badge bg-light text-dark">Table: {{ order.table_no }}</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger py-0 px-2" onclick="deleteOrder({{ order.id }}, this)">🗑️
+                        삭제</button>
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush">
+                        {% for item in order['items'] %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center"
+                            data-item-id="{{ item.item_id }}">
+                            <span>{{ item.menu_name }} <span class="badge bg-info text-dark rounded-pill">x{{
+                                    item.quantity }}</span></span>
+                            <div>
+                                {% for i in range(item.checks_required) %}
+                                <input class="form-check-input item-checkbox" type="checkbox" {% if i <
+                                    item.checks_completed %}checked{% endif %}
+                                    onchange="handleCheck(this, {{ item.item_id }})">
+                                {% endfor %}
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 주문 삭제
+    function deleteOrder(orderId, btnElement) {
+        if (!confirm('주문 #' + orderId + '을(를) 정말 삭제하시겠습니까?\n(삭제 시 정산 금액에서도 제외됩니다.)')) {
+            return;
+        }
+        fetch('/admin/delete_order/' + orderId, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    btnElement.closest('.order-card-wrapper').remove();
+                }
+            });
+    }
+
+    // 체크박스 제어
+    function handleCheck(checkbox, itemId) {
+        const li = checkbox.closest('li');
+        const checkedCount = li.querySelectorAll('.item-checkbox:checked').length;
+
+        fetch('/admin/update_check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId, checks_completed: checkedCount })
+        }).then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    checkOrderCompletion(li.closest('.order-card-wrapper'));
+                }
+            });
+    }
+
+    // 주문 완료 상태 체크 (카드 위아래 이동)
+    function checkOrderCompletion(cardWrapper) {
+        const checkboxes = cardWrapper.querySelectorAll('.item-checkbox');
+        let isComplete = Array.from(checkboxes).every(cb => cb.checked);
+
+        const incompleteContainer = document.getElementById('incomplete-container');
+        const completeContainer = document.getElementById('complete-container');
+
+        if (isComplete && cardWrapper.parentElement === incompleteContainer) {
+            cardWrapper.querySelector('.card').classList.replace('border-primary', 'border-secondary');
+            cardWrapper.querySelector('.card-header').classList.replace('bg-primary', 'bg-secondary');
+            completeContainer.appendChild(cardWrapper);
+            sortCards(completeContainer);
+        } else if (!isComplete && cardWrapper.parentElement === completeContainer) {
+            cardWrapper.querySelector('.card').classList.replace('border-secondary', 'border-primary');
+            cardWrapper.querySelector('.card-header').classList.replace('bg-secondary', 'bg-primary');
+            incompleteContainer.appendChild(cardWrapper);
+            sortCards(incompleteContainer);
+        }
+    }
+
+    // 주문 ID 순서 정렬
+    function sortCards(container) {
+        const cards = Array.from(container.children);
+        cards.sort((a, b) => parseInt(a.getAttribute('data-order-id')) - parseInt(b.getAttribute('data-order-id')));
+        cards.forEach(card => container.appendChild(card));
+    }
+
+    // 10초마다 자동 새로고침
+    setTimeout(function () {
+        window.location.reload();
+    }, 10000);
+</script>
+{% endblock %}

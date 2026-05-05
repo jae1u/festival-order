@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>메뉴 주문</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #fff;
+            padding-bottom: 100px;
+            max-width: 600px;
+            margin: auto;
+        }
+
+        .menu-img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 10px;
+            margin-right: 15px;
+        }
+
+        /* 💡 품절 시 이미지를 흑백으로 만드는 CSS 추가 */
+        .grayscale {
+            filter: grayscale(100%);
+        }
+
+        .floating-btn-left {
+            position: fixed;
+            bottom: 25px;
+            left: 25px;
+            z-index: 1000;
+            width: 65px;
+            height: 65px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .floating-btn-right {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            z-index: 1000;
+            width: 65px;
+            height: 65px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .cart-badge {
+            position: absolute;
+            top: 0;
+            right: 0;
+            transform: translate(30%, -30%);
+            font-size: 14px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-primary text-white p-3 sticky-top shadow-sm">
+        <h4 class="mb-0 text-center">Table {{ table_no }}</h4>
+    </div>
+
+    <div class="container mt-3">
+        {% for menu in menus %}
+        <!-- 💡 품절된 메뉴는 전체적으로 반투명(opacity-50) 처리 -->
+        <div class="d-flex align-items-center mb-3 border-bottom pb-3 {{ 'opacity-50' if menu.is_soldout else '' }}">
+            <img src="{{ menu.image_url }}" class="menu-img {{ 'grayscale' if menu.is_soldout else '' }}"
+                alt="{{ menu.name }}">
+            <div class="flex-grow-1">
+                <h5 class="mb-1 fw-bold">
+                    {{ menu.name }}
+                    <!-- 💡 품절 뱃지 추가 -->
+                    {% if menu.is_soldout %}
+                    <span class="badge bg-danger ms-2 fs-6">품절</span>
+                    {% endif %}
+                </h5>
+                <p class="mb-0 text-muted">{{ "{:,}".format(menu.price) }}원</p>
+            </div>
+
+            <!-- 💡 품절 시 추가 버튼 비활성화 -->
+            {% if not menu.is_soldout %}
+            <button class="btn btn-outline-primary btn-sm rounded-circle fw-bold fs-4"
+                style="width:40px; height:40px; line-height:1;"
+                onclick="addToCart('{{ menu.name }}', {{ menu.price }})">+</button>
+            {% else %}
+            <button class="btn btn-secondary btn-sm rounded-circle fw-bold fs-4"
+                style="width:40px; height:40px; line-height:1;" disabled>-</button>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- 플로팅 버튼 -->
+    <button class="btn btn-warning rounded-circle floating-btn-left" onclick="showCart()">
+        🛒<span id="cartBadge" class="badge bg-danger rounded-pill cart-badge" style="display:none;">0</span>
+    </button>
+    <a href="/my_orders" class="btn btn-secondary rounded-circle floating-btn-right">🧾</a>
+
+    <!-- 장바구니 모달 -->
+    <div class="modal fade" id="cartModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold">장바구니</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <ul id="cartList" class="list-group list-group-flush mb-3"></ul>
+                    <h5 class="text-end fw-bold">총 <span id="cartTotal" class="text-danger">0</span>원</h5>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary w-100 btn-lg" onclick="submitOrder()">주문하기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let cart = JSON.parse(sessionStorage.getItem('cart')) || {};
+        const cartModal = new bootstrap.Modal(document.getElementById('cartModal'));
+
+        window.onload = function () { updateBadge(); };
+
+        function saveCart() { sessionStorage.setItem('cart', JSON.stringify(cart)); }
+
+        function addToCart(name, price) {
+            if (cart[name]) cart[name].quantity += 1;
+            else cart[name] = { price: price, quantity: 1 };
+            saveCart();
+            updateBadge();
+        }
+
+        function removeFromCart(name) {
+            if (cart[name]) {
+                cart[name].quantity -= 1;
+                if (cart[name].quantity <= 0) delete cart[name];
+                saveCart();
+                updateBadge();
+                showCart();
+            }
+        }
+
+        function updateBadge() {
+            let totalQty = 0;
+            for (let k in cart) totalQty += cart[k].quantity;
+            const badge = document.getElementById('cartBadge');
+            if (totalQty > 0) { badge.innerText = totalQty; badge.style.display = 'block'; }
+            else { badge.style.display = 'none'; }
+        }
+
+        function showCart() {
+            const list = document.getElementById('cartList');
+            list.innerHTML = '';
+            let total = 0;
+
+            if (Object.keys(cart).length === 0) {
+                list.innerHTML = '<li class="list-group-item text-center text-muted">장바구니가 비어있습니다.</li>';
+            } else {
+                for (let name in cart) {
+                    const item = cart[name];
+                    total += item.price * item.quantity;
+                    list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>${name} <span class="badge bg-secondary rounded-pill ms-1">x${item.quantity}</span></div>
+                        <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="removeFromCart('${name}')">빼기</button>
+                    </li>`;
+                }
+            }
+            document.getElementById('cartTotal').innerText = total.toLocaleString();
+            cartModal.show();
+        }
+
+        function submitOrder() {
+            if (Object.keys(cart).length === 0) return alert('메뉴를 먼저 담아주세요.');
+            const orderData = Object.keys(cart).map(name => ({ name: name, quantity: cart[name].quantity }));
+
+            fetch('/api/order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cart: orderData })
+            }).then(res => res.json()).then(data => {
+                if (data.status === 'success') {
+                    alert('주방으로 주문이 전달되었습니다!');
+                    cart = {};
+                    saveCart();
+                    updateBadge();
+                    cartModal.hide();
+                } else if (data.status === 'soldout') {
+                    alert('🚨 죄송합니다. 다음 상품이 방금 품절되었습니다: \n- ' + data.soldout_items.join('\n- ') + '\n\n해당 상품은 장바구니에서 자동으로 삭제됩니다.');
+                    data.soldout_items.forEach(item => { delete cart[item]; });
+                    saveCart();
+                    updateBadge();
+                    showCart();
+                } else if (data.status === 'redirect') {
+                    alert(data.message || '세션이 만료되었습니다. 다시 접속해주세요.');
+                    window.location.href = data.url;
+                }
+            });
+        }
+    </script>
+</body>
+
+</html>
