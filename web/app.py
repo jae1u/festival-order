@@ -134,7 +134,7 @@ def customer_menu():
     # is_soldout 조건 해제 (모든 메뉴 가져오기)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM menus")
+    cursor.execute("SELECT * FROM menus ORDER BY id ASC")
     menus = cursor.fetchall()
     conn.close()
 
@@ -350,7 +350,7 @@ def admin_history():
 def admin_menus():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM menus")
+    cursor.execute("SELECT * FROM menus ORDER BY id ASC")
     menus = cursor.fetchall()
     conn.close()
     return render_template("admin_menus.html", menus=menus)
