@@ -1,7 +1,7 @@
 import os
 import time
 from datetime import timedelta
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 import pymysql
 
 app = Flask(__name__)
@@ -305,7 +305,6 @@ def kitchen():
 def billing():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # 💡 [수정] 조리 완료 상태를 확인하기 위해 checks 관련 컬럼 추가 조회
     cursor.execute("""
         SELECT s.id as session_id, s.table_no, s.customer_name, s.customer_phone, s.organization, s.created_at, 
                i.menu_name, i.price, i.quantity, i.checks_required, i.checks_completed
@@ -313,15 +312,12 @@ def billing():
         LEFT JOIN orders o ON s.id = o.session_id 
         LEFT JOIN order_items i ON o.id = i.order_id 
         WHERE s.status = 'ACTIVE'
+        ORDER BY s.table_no ASC, s.created_at ASC, o.id ASC, i.id ASC
     """)
     rows = cursor.fetchall()
     conn.close()
-    
-    # 💡 [수정] 조리가 모두 완료된 테이블(all_complete == True)만 필터링하여 전달
-    all_sessions = group_sessions(rows)
-    ready_to_bill = [s for s in all_sessions if s['all_complete']]
-    
-    return render_template('billing.html', sessions=ready_to_bill)
+
+    return render_template('billing.html', sessions=group_sessions(rows))
 
 
 @app.route("/admin/history")
@@ -381,6 +377,25 @@ def checkout(session_id):
         cursor.execute(
             "SELECT status FROM table_sessions WHERE id = %s FOR UPDATE", (session_id,)
         )
+        row = cursor.fetchone()
+        if not row or row["status"] != "ACTIVE":
+            flash("이미 종료되었거나 찾을 수 없는 테이블입니다.", "warning")
+            return redirect(url_for("billing"))
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS incomplete_count
+            FROM orders o
+            JOIN order_items i ON o.id = i.order_id
+            WHERE o.session_id = %s AND i.checks_completed < i.checks_required
+            """,
+            (session_id,),
+        )
+        incomplete = cursor.fetchone()
+        if incomplete and incomplete["incomplete_count"] > 0:
+            flash("조리 완료 전에는 정산을 완료할 수 없습니다.", "warning")
+            return redirect(url_for("billing"))
+
         cursor.execute(
             "UPDATE table_sessions SET status = 'PAID', paid_at = NOW() WHERE id = %s",
             (session_id,),

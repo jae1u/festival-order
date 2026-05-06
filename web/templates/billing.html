@@ -12,7 +12,14 @@
     <div class="col-12 mb-4">
         <div class="card shadow-sm border-success">
             <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Table {{ session.table_no }}</h4>
+                <div>
+                    <h4 class="mb-1">Table {{ session.table_no }}</h4>
+                    {% if session.all_complete %}
+                    <span class="badge bg-light text-success">조리 완료</span>
+                    {% else %}
+                    <span class="badge bg-warning text-dark">준비 중</span>
+                    {% endif %}
+                </div>
                 <div class="text-end">
                     <small class="d-block">이름: {{ session.customer_name or '-' }}</small>
                     <small class="d-block">소속: {{ session.organization or '-' }}</small>
@@ -45,9 +52,13 @@
 
                     <form action="{{ url_for('checkout', session_id=session.session_id) }}" method="POST"
                         onsubmit="return confirm('Table {{ session.table_no }} 정산을 완료하시겠습니까?');">
-                        <button type="submit" class="btn btn-lg btn-primary fw-bold">정산 완료</button>
+                        <button type="submit" class="btn btn-lg btn-primary fw-bold" {% if not session.all_complete
+                            %}disabled{% endif %}>정산 완료</button>
                     </form>
                 </div>
+                {% if not session.all_complete %}
+                <p class="text-muted small text-end mb-0 mt-2">주방에서 모든 체크가 완료되면 정산할 수 있습니다.</p>
+                {% endif %}
             </div>
         </div>
     </div>
