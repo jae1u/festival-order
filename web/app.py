@@ -10,6 +10,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default_secret_key")
 app.permanent_session_lifetime = timedelta(hours=24)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "defaultadmin")
+JJAPAGHETTI_NAME = "짜파게티"
+JJAPAGHETTI_BATCH_SIZE = 5
 
 
 def get_db_connection():
@@ -27,6 +29,19 @@ def get_db_connection():
             retries -= 1
             time.sleep(2)
     return None
+
+
+def split_order_item(item):
+    if item["name"] != JJAPAGHETTI_NAME or item["quantity"] <= JJAPAGHETTI_BATCH_SIZE:
+        return [item]
+
+    batches = []
+    remaining = item["quantity"]
+    while remaining > 0:
+        batch_quantity = min(remaining, JJAPAGHETTI_BATCH_SIZE)
+        batches.append({**item, "quantity": batch_quantity})
+        remaining -= batch_quantity
+    return batches
 
 
 @app.before_request
@@ -207,10 +222,17 @@ def place_order():
         order_id = cursor.lastrowid
         
         for item in valid_cart:
-            cursor.execute("""
-                INSERT INTO order_items (order_id, menu_name, price, quantity, checks_required)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (order_id, item['name'], item['price'], item['quantity'], item['checks_required']))
+            for split_item in split_order_item(item):
+                cursor.execute("""
+                    INSERT INTO order_items (order_id, menu_name, price, quantity, checks_required)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    order_id,
+                    split_item['name'],
+                    split_item['price'],
+                    split_item['quantity'],
+                    split_item['checks_required'],
+                ))
                 
         conn.commit()
     except Exception as e:
@@ -293,7 +315,7 @@ def kitchen():
     cursor.execute("""
         SELECT o.id as order_id, s.table_no, o.order_time, i.id as item_id, i.menu_name, i.quantity, i.checks_required, i.checks_completed
         FROM orders o JOIN table_sessions s ON o.session_id = s.id JOIN order_items i ON o.id = i.order_id
-        WHERE s.status = 'ACTIVE' ORDER BY o.id ASC
+        WHERE s.status = 'ACTIVE' ORDER BY o.id ASC, i.id ASC
     """)
     rows = cursor.fetchall()
     conn.close()
@@ -428,14 +450,46 @@ def checkout(session_id):
 @app.route("/admin/update_check", methods=["POST"])
 def update_check():
     data = request.json
+    try:
+        item_id = int(data.get("item_id"))
+        checks_completed = int(data.get("checks_completed"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "잘못된 요청입니다."}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE order_items SET checks_completed = %s WHERE id = %s",
-        (data.get("checks_completed"), data.get("item_id")),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            """
+            SELECT menu_name, checks_required, checks_completed
+            FROM order_items
+            WHERE id = %s
+            """,
+            (item_id,),
+        )
+        item = cursor.fetchone()
+
+        if not item:
+            return jsonify({"status": "error", "message": "주문 항목을 찾을 수 없습니다."}), 404
+
+        if checks_completed < 0 or checks_completed > item["checks_required"]:
+            return jsonify({"status": "error", "message": "잘못된 체크 상태입니다."}), 400
+
+        if (
+            item["menu_name"] == JJAPAGHETTI_NAME
+            and item["checks_required"] >= 2
+            and checks_completed >= 2
+            and item["checks_completed"] < 1
+        ):
+            return jsonify({"status": "error", "message": "조리팀 완료 후 서빙팀 완료가 가능합니다."}), 400
+
+        cursor.execute(
+            "UPDATE order_items SET checks_completed = %s WHERE id = %s",
+            (checks_completed, item_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return jsonify({"status": "success"})
 
 
