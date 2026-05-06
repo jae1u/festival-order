@@ -14,9 +14,6 @@
             margin: auto;
         }
 
-        .form-text {
-            min-height: 1.25rem;
-        }
     </style>
 </head>
 
@@ -29,27 +26,27 @@
                     <label class="form-label text-muted">테이블 번호</label>
                     <input type="text" name="table_no" id="tableNo" class="form-control form-control-lg"
                         inputmode="numeric" maxlength="10" autocomplete="off" required aria-describedby="tableNoHelp">
-                    <div id="tableNoHelp" class="form-text validation-message">1 이상의 숫자로 입력해주세요.</div>
+                    <div id="tableNoHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted">주문자 이름</label>
                     <input type="text" name="customer_name" id="customerName" class="form-control form-control-lg"
                         maxlength="20" autocomplete="name" required aria-describedby="nameHelp">
-                    <div id="nameHelp" class="form-text validation-message">20자 이내로 입력해주세요.</div>
+                    <div id="nameHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted">전화번호</label>
                     <input type="tel" name="customer_phone" id="customerPhone" class="form-control form-control-lg"
                         inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="01012345678" required
                         aria-describedby="phoneHelp">
-                    <div id="phoneHelp" class="form-text validation-message">하이픈 없이 숫자 10자리 또는 11자리로 입력해주세요.</div>
+                    <div id="phoneHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-4">
                     <label class="form-label text-muted">소속 단체명</label>
                     <input type="text" name="organization" id="organization" class="form-control form-control-lg"
                         maxlength="20" placeholder="없을 경우 개인으로 입력해주세요." required
                         aria-describedby="organizationHelp">
-                    <div id="organizationHelp" class="form-text validation-message">20자 이내로 입력해주세요.</div>
+                    <div id="organizationHelp" class="invalid-feedback"></div>
                 </div>
                 <button type="submit" id="submitButton" class="btn btn-primary btn-lg w-100" disabled>메뉴판 보기</button>
             </form>
@@ -65,6 +62,7 @@
             customerPhone: document.getElementById('customerPhone'),
             organization: document.getElementById('organization'),
         };
+        const touchedFields = new Set();
 
         const rules = {
             tableNo(value) {
@@ -76,24 +74,24 @@
                 if (number > 2147483647) {
                     return { valid: false, message: '테이블 번호가 너무 큽니다.' };
                 }
-                return { valid: true, message: '확인되었습니다.' };
+                return { valid: true, message: '' };
             },
             customerName(value) {
                 if (!value) return { valid: false, message: '주문자 이름을 입력해주세요.' };
                 if (value.length > 20) return { valid: false, message: '20자 이내로 입력해주세요.' };
-                return { valid: true, message: '확인되었습니다.' };
+                return { valid: true, message: '' };
             },
             customerPhone(value) {
                 if (!value) return { valid: false, message: '전화번호를 입력해주세요.' };
                 if (!/^\d{10,11}$/.test(value)) {
                     return { valid: false, message: '숫자 10자리 또는 11자리로 입력해주세요.' };
                 }
-                return { valid: true, message: '확인되었습니다.' };
+                return { valid: true, message: '' };
             },
             organization(value) {
                 if (!value) return { valid: false, message: '소속이 없으면 개인으로 입력해주세요.' };
                 if (value.length > 20) return { valid: false, message: '20자 이내로 입력해주세요.' };
-                return { valid: true, message: '확인되었습니다.' };
+                return { valid: true, message: '' };
             },
         };
 
@@ -104,14 +102,12 @@
             }
         }
 
-        function setFieldState(input, result) {
+        function setFieldState(key, result) {
+            const input = fields[key];
             const message = document.getElementById(input.getAttribute('aria-describedby'));
-            input.classList.toggle('is-valid', result.valid);
-            input.classList.toggle('is-invalid', !result.valid && input.value.length > 0);
+            const shouldShowError = !result.valid && touchedFields.has(key);
             message.textContent = result.message;
-            message.classList.toggle('text-success', result.valid);
-            message.classList.toggle('text-danger', !result.valid && input.value.length > 0);
-            message.classList.toggle('text-muted', !result.valid && input.value.length === 0);
+            input.classList.toggle('is-invalid', shouldShowError);
         }
 
         function validateForm() {
@@ -123,7 +119,7 @@
             };
 
             Object.entries(results).forEach(([key, result]) => {
-                setFieldState(fields[key], result);
+                setFieldState(key, result);
             });
 
             submitButton.disabled = !Object.values(results).every(result => result.valid);
@@ -131,16 +127,24 @@
 
         [fields.tableNo, fields.customerPhone].forEach(input => {
             input.addEventListener('input', () => {
+                touchedFields.add(input.id === 'tableNo' ? 'tableNo' : 'customerPhone');
                 sanitizeNumeric(input);
                 validateForm();
             });
         });
 
-        [fields.customerName, fields.organization].forEach(input => {
-            input.addEventListener('input', validateForm);
+        fields.customerName.addEventListener('input', () => {
+            touchedFields.add('customerName');
+            validateForm();
+        });
+
+        fields.organization.addEventListener('input', () => {
+            touchedFields.add('organization');
+            validateForm();
         });
 
         form.addEventListener('submit', event => {
+            Object.keys(fields).forEach(key => touchedFields.add(key));
             validateForm();
             if (submitButton.disabled) {
                 event.preventDefault();
