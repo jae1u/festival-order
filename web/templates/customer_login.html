@@ -23,31 +23,32 @@
             <h3 class="card-title text-center mb-4">환영합니다! 👋</h3>
             <form action="/" method="POST" id="customerLoginForm" novalidate>
                 <div class="mb-3">
-                    <label class="form-label text-muted">테이블 번호</label>
+                    <label class="form-label text-muted" for="tableNo">테이블 번호</label>
                     <input type="text" name="table_no" id="tableNo" class="form-control form-control-lg"
                         inputmode="numeric" maxlength="10" autocomplete="off" required aria-describedby="tableNoHelp">
                     <div id="tableNoHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">주문자 이름</label>
+                    <label class="form-label text-muted" for="customerName">주문자 이름</label>
                     <input type="text" name="customer_name" id="customerName" class="form-control form-control-lg"
                         maxlength="20" autocomplete="name" required aria-describedby="nameHelp">
                     <div id="nameHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">전화번호</label>
+                    <label class="form-label text-muted" for="customerPhone">전화번호</label>
                     <input type="tel" name="customer_phone" id="customerPhone" class="form-control form-control-lg"
                         inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="01012345678" required
                         aria-describedby="phoneHelp">
                     <div id="phoneHelp" class="invalid-feedback"></div>
                 </div>
                 <div class="mb-4">
-                    <label class="form-label text-muted">소속 단체명</label>
+                    <label class="form-label text-muted" for="organization">소속 단체명</label>
                     <input type="text" name="organization" id="organization" class="form-control form-control-lg"
                         maxlength="20" placeholder="없을 경우 개인으로 입력해주세요." required
                         aria-describedby="organizationHelp">
                     <div id="organizationHelp" class="invalid-feedback"></div>
                 </div>
+                <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" id="submitButton" class="btn btn-primary btn-lg w-100" disabled>메뉴판 보기</button>
             </form>
         </div>

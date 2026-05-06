@@ -1,5 +1,6 @@
 import os
 import re
+import secrets
 import time
 from datetime import timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
@@ -7,11 +8,21 @@ import pymysql
 
 app = Flask(__name__)
 
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default_secret_key")
+_secret_key = os.environ.get("FLASK_SECRET_KEY")
+_admin_password = os.environ.get("ADMIN_PASSWORD")
+if not _secret_key or _secret_key in {"default_secret_key", "super_secret_key_for_session"}:
+    raise RuntimeError("FLASK_SECRET_KEY must be set to a non-default value")
+if not _admin_password or _admin_password in {"defaultadmin", "admin_password"}:
+    raise RuntimeError("ADMIN_PASSWORD must be set to a non-default value")
+
+app.secret_key = _secret_key
 app.permanent_session_lifetime = timedelta(hours=24)
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "defaultadmin")
+ADMIN_PASSWORD = _admin_password
 JJAPAGHETTI_NAME = "짜파게티"
 JJAPAGHETTI_BATCH_SIZE = 5
+ADMIN_LOGIN_MAX_FAILURES = 5
+ADMIN_LOGIN_LOCKOUT_SECONDS = 60
+CSRF_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
 def get_db_connection():
@@ -44,11 +55,46 @@ def split_order_item(item):
     return batches
 
 
+def csrf_token():
+    token = session.get("_csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["_csrf_token"] = token
+    return token
+
+
+@app.context_processor
+def inject_csrf_token():
+    return {"csrf_token": csrf_token}
+
+
+def request_csrf_token():
+    return (
+        request.form.get("_csrf_token")
+        or request.headers.get("X-CSRF-Token")
+        or request.headers.get("X-CSRFToken")
+    )
+
+
 @app.before_request
 def check_admin_login():
     if request.path.startswith("/admin") and request.path != "/admin/login":
         if not session.get("logged_in"):
             return redirect(url_for("login"))
+
+
+@app.before_request
+def validate_csrf_token():
+    if request.method not in CSRF_METHODS or request.path == "/admin/login":
+        return None
+
+    expected = session.get("_csrf_token")
+    supplied = request_csrf_token()
+    if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+        if request.path.startswith("/api/") or request.path.startswith("/admin/"):
+            return jsonify({"status": "error", "message": "CSRF token is missing or invalid."}), 403
+        return "CSRF token is missing or invalid.", 403
+    return None
 
 
 # ==========================================
@@ -294,15 +340,29 @@ def customer_logout():
 @app.route("/admin/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
+        locked_until = session.get("admin_login_locked_until", 0)
+        now = time.time()
+        if locked_until and locked_until > now:
+            retry_after = int(locked_until - now)
+            return render_template("login.html", error=f"로그인 시도가 너무 많습니다. {retry_after}초 후 다시 시도해주세요."), 429
+
         if request.form.get("password") == ADMIN_PASSWORD:
             session.permanent = True
             session["logged_in"] = True
+            session.pop("admin_login_failures", None)
+            session.pop("admin_login_locked_until", None)
             return redirect(url_for("kitchen"))
+
+        failures = session.get("admin_login_failures", 0) + 1
+        session["admin_login_failures"] = failures
+        if failures >= ADMIN_LOGIN_MAX_FAILURES:
+            session["admin_login_locked_until"] = now + ADMIN_LOGIN_LOCKOUT_SECONDS
+            return render_template("login.html", error="로그인 시도가 너무 많습니다. 잠시 후 다시 시도해주세요."), 429
         return render_template("login.html", error="비밀번호 불일치")
     return render_template("login.html")
 
 
-@app.route("/admin/logout")
+@app.route("/admin/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))

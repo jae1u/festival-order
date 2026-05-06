@@ -1,0 +1,14 @@
+{
+  "name": "festival-order-audit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:security": "playwright test tests/security",
+    "load:test": "node scripts/allowlisted-load-test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.53.0"
+  }
+}
