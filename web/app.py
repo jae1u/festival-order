@@ -1,7 +1,8 @@
 import os
+import re
 import time
 from datetime import timedelta
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
 import pymysql
 
 app = Flask(__name__)
@@ -9,6 +10,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "default_secret_key")
 app.permanent_session_lifetime = timedelta(hours=24)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "defaultadmin")
+JJAPAGHETTI_NAME = "짜파게티"
+JJAPAGHETTI_BATCH_SIZE = 5
 
 
 def get_db_connection():
@@ -28,6 +31,19 @@ def get_db_connection():
     return None
 
 
+def split_order_item(item):
+    if item["name"] != JJAPAGHETTI_NAME or item["quantity"] <= JJAPAGHETTI_BATCH_SIZE:
+        return [item]
+
+    batches = []
+    remaining = item["quantity"]
+    while remaining > 0:
+        batch_quantity = min(remaining, JJAPAGHETTI_BATCH_SIZE)
+        batches.append({**item, "quantity": batch_quantity})
+        remaining -= batch_quantity
+    return batches
+
+
 @app.before_request
 def check_admin_login():
     if request.path.startswith("/admin") and request.path != "/admin/login":
@@ -43,24 +59,26 @@ def check_admin_login():
 @app.route('/', methods=['GET', 'POST'])
 def customer_home():
     if request.method == 'POST':
-        table_no_str = request.form.get('table_no')
-        name = request.form.get('customer_name')
-        phone = request.form.get('customer_phone')
-        org = request.form.get('organization')
+        table_no_str = (request.form.get('table_no') or '').strip()
+        name = (request.form.get('customer_name') or '').strip()
+        phone = (request.form.get('customer_phone') or '').strip()
+        org = (request.form.get('organization') or '').strip()
 
-        # 💡 [방어 1] 테이블 번호 검증 (빈 값, 문자열 차단)
         if not table_no_str or not table_no_str.isdigit():
             return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
             
         table_no = int(table_no_str)
         
-        # 💡 [방어 2] MySQL INT 범위(2,147,483,647) 및 논리적 범위(0 이하) 차단
         if table_no <= 0 or table_no > 2147483647:
             return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
 
-        # 💡 [방어 3] 이름, 전화번호, 소속 길이 제한 (DB 오버플로우 에러 차단)
-        # (기존에 name을 TEXT로 바꾸셨더라도, 너무 긴 쓰레기값 테러를 막기 위해 적절히 제한)
-        if (name and len(name) > 20) or (phone and len(phone) > 13) or (org and len(org) > 20):
+        if not name or not org:
+            return "<script>alert('이름과 소속 단체명을 입력해주세요!'); window.location.href='/';</script>"
+
+        if not re.fullmatch(r"\d{10,11}", phone):
+            return "<script>alert('전화번호는 숫자 10자리 또는 11자리로 입력해주세요!'); window.location.href='/';</script>"
+
+        if len(name) > 20 or len(org) > 20:
             return "<script>alert('입력값이 너무 깁니다!'); window.location.href='/';</script>"
 
         details = []
@@ -134,7 +152,7 @@ def customer_menu():
     # is_soldout 조건 해제 (모든 메뉴 가져오기)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM menus")
+    cursor.execute("SELECT * FROM menus ORDER BY id ASC")
     menus = cursor.fetchall()
     conn.close()
 
@@ -204,10 +222,17 @@ def place_order():
         order_id = cursor.lastrowid
         
         for item in valid_cart:
-            cursor.execute("""
-                INSERT INTO order_items (order_id, menu_name, price, quantity, checks_required)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (order_id, item['name'], item['price'], item['quantity'], item['checks_required']))
+            for split_item in split_order_item(item):
+                cursor.execute("""
+                    INSERT INTO order_items (order_id, menu_name, price, quantity, checks_required)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    order_id,
+                    split_item['name'],
+                    split_item['price'],
+                    split_item['quantity'],
+                    split_item['checks_required'],
+                ))
                 
         conn.commit()
     except Exception as e:
@@ -240,9 +265,25 @@ def customer_history():
     )
     rows = cursor.fetchall()
     conn.close()
+
+    total_amount = 0
+    for row in rows:
+        row["subtotal"] = row["price"] * row["quantity"]
+        total_amount += row["subtotal"]
+
     return render_template(
-        "customer_history.html", orders=rows, table_no=session["table_no"]
+        "customer_history.html",
+        orders=rows,
+        table_no=session["table_no"],
+        total_amount=total_amount,
     )
+
+
+@app.route("/customer/logout", methods=["POST"])
+def customer_logout():
+    session.pop("customer_session_id", None)
+    session.pop("table_no", None)
+    return redirect(url_for("customer_home"))
 
 
 # ==========================================
@@ -274,7 +315,7 @@ def kitchen():
     cursor.execute("""
         SELECT o.id as order_id, s.table_no, o.order_time, i.id as item_id, i.menu_name, i.quantity, i.checks_required, i.checks_completed
         FROM orders o JOIN table_sessions s ON o.session_id = s.id JOIN order_items i ON o.id = i.order_id
-        WHERE s.status = 'ACTIVE' ORDER BY o.id ASC
+        WHERE s.status = 'ACTIVE' ORDER BY o.id ASC, i.id ASC
     """)
     rows = cursor.fetchall()
     conn.close()
@@ -305,7 +346,6 @@ def kitchen():
 def billing():
     conn = get_db_connection()
     cursor = conn.cursor()
-    # 💡 [수정] 조리 완료 상태를 확인하기 위해 checks 관련 컬럼 추가 조회
     cursor.execute("""
         SELECT s.id as session_id, s.table_no, s.customer_name, s.customer_phone, s.organization, s.created_at, 
                i.menu_name, i.price, i.quantity, i.checks_required, i.checks_completed
@@ -313,15 +353,12 @@ def billing():
         LEFT JOIN orders o ON s.id = o.session_id 
         LEFT JOIN order_items i ON o.id = i.order_id 
         WHERE s.status = 'ACTIVE'
+        ORDER BY s.table_no ASC, s.created_at ASC, o.id ASC, i.id ASC
     """)
     rows = cursor.fetchall()
     conn.close()
-    
-    # 💡 [수정] 조리가 모두 완료된 테이블(all_complete == True)만 필터링하여 전달
-    all_sessions = group_sessions(rows)
-    ready_to_bill = [s for s in all_sessions if s['all_complete']]
-    
-    return render_template('billing.html', sessions=ready_to_bill)
+
+    return render_template('billing.html', sessions=group_sessions(rows))
 
 
 @app.route("/admin/history")
@@ -354,7 +391,7 @@ def admin_history():
 def admin_menus():
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM menus")
+    cursor.execute("SELECT * FROM menus ORDER BY id ASC")
     menus = cursor.fetchall()
     conn.close()
     return render_template("admin_menus.html", menus=menus)
@@ -381,6 +418,25 @@ def checkout(session_id):
         cursor.execute(
             "SELECT status FROM table_sessions WHERE id = %s FOR UPDATE", (session_id,)
         )
+        row = cursor.fetchone()
+        if not row or row["status"] != "ACTIVE":
+            flash("이미 종료되었거나 찾을 수 없는 테이블입니다.", "warning")
+            return redirect(url_for("billing"))
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS incomplete_count
+            FROM orders o
+            JOIN order_items i ON o.id = i.order_id
+            WHERE o.session_id = %s AND i.checks_completed < i.checks_required
+            """,
+            (session_id,),
+        )
+        incomplete = cursor.fetchone()
+        if incomplete and incomplete["incomplete_count"] > 0:
+            flash("조리 완료 전에는 정산을 완료할 수 없습니다.", "warning")
+            return redirect(url_for("billing"))
+
         cursor.execute(
             "UPDATE table_sessions SET status = 'PAID', paid_at = NOW() WHERE id = %s",
             (session_id,),
@@ -394,14 +450,46 @@ def checkout(session_id):
 @app.route("/admin/update_check", methods=["POST"])
 def update_check():
     data = request.json
+    try:
+        item_id = int(data.get("item_id"))
+        checks_completed = int(data.get("checks_completed"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "잘못된 요청입니다."}), 400
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE order_items SET checks_completed = %s WHERE id = %s",
-        (data.get("checks_completed"), data.get("item_id")),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        cursor.execute(
+            """
+            SELECT menu_name, checks_required, checks_completed
+            FROM order_items
+            WHERE id = %s
+            """,
+            (item_id,),
+        )
+        item = cursor.fetchone()
+
+        if not item:
+            return jsonify({"status": "error", "message": "주문 항목을 찾을 수 없습니다."}), 404
+
+        if checks_completed < 0 or checks_completed > item["checks_required"]:
+            return jsonify({"status": "error", "message": "잘못된 체크 상태입니다."}), 400
+
+        if (
+            item["menu_name"] == JJAPAGHETTI_NAME
+            and item["checks_required"] >= 2
+            and checks_completed >= 2
+            and item["checks_completed"] < 1
+        ):
+            return jsonify({"status": "error", "message": "조리팀 완료 후 서빙팀 완료가 가능합니다."}), 400
+
+        cursor.execute(
+            "UPDATE order_items SET checks_completed = %s WHERE id = %s",
+            (checks_completed, item_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
     return jsonify({"status": "success"})
 
 

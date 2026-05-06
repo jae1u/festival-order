@@ -12,28 +12,43 @@
             max-width: 600px;
             margin: auto;
         }
+
+        .history-header {
+            gap: 10px;
+        }
     </style>
 </head>
 
 <body>
-    <div class="bg-secondary text-white p-3 sticky-top d-flex align-items-center">
-        <a href="/menu" class="text-white text-decoration-none fs-4 me-3">←</a>
-        <h4 class="mb-0">Table {{ table_no }} 주문 내역</h4>
+    <div class="bg-secondary text-white p-3 sticky-top d-flex align-items-center history-header">
+        <a href="/menu" class="text-white text-decoration-none fs-4">←</a>
+        <h4 class="mb-0 flex-grow-1">Table {{ table_no }} 주문 내역</h4>
+        <form action="{{ url_for('customer_logout') }}" method="POST" onsubmit="sessionStorage.removeItem('cart');">
+            <button type="submit" class="btn btn-sm btn-outline-light fw-bold">로그아웃</button>
+        </form>
     </div>
 
     <div class="container mt-4">
         {% if not orders %}
         <div class="alert alert-light text-center">아직 주문한 메뉴가 없습니다.</div>
         {% else %}
+        <div class="bg-white border rounded p-3 mb-3 d-flex justify-content-between align-items-center">
+            <span class="text-muted">총 주문 금액</span>
+            <strong class="fs-4 text-danger">{{ "{:,}".format(total_amount) }}원</strong>
+        </div>
         <ul class="list-group shadow-sm">
             {% for order in orders %}
             <li class="list-group-item d-flex justify-content-between align-items-center py-3">
                 <div>
                     <h6 class="mb-1 fw-bold">{{ order.menu_name }}</h6>
-                    <small class="text-muted">{{ order.order_time.strftime('%H:%M') }}</small>
+                    <small class="text-muted">
+                        {{ order.order_time.strftime('%H:%M') }} · {{ "{:,}".format(order.price) }}원 x {{
+                        order.quantity }}
+                    </small>
                 </div>
                 <div class="text-end">
-                    <span class="badge bg-dark rounded-pill fs-6 px-3 py-2">x{{ order.quantity }}</span>
+                    <div class="fw-bold">{{ "{:,}".format(order.subtotal) }}원</div>
+                    <span class="badge bg-dark rounded-pill mt-1">x{{ order.quantity }}</span>
                 </div>
             </li>
             {% endfor %}

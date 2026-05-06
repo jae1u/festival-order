@@ -15,9 +15,28 @@
     }
 
     .item-checkbox {
-        transform: scale(1.3);
-        margin-left: 10px;
         cursor: pointer;
+    }
+
+    .order-card .card-header {
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+
+    .check-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 6px;
+    }
+
+    .check-label {
+        min-width: 72px;
+        margin: 0;
+    }
+
+    .check-label .btn {
+        width: 100%;
     }
 </style>
 {% endblock %}
@@ -41,14 +60,27 @@
                 <ul class="list-group list-group-flush">
                     {% for item in order['items'] %}
                     <li class="list-group-item d-flex justify-content-between align-items-center"
-                        data-item-id="{{ item.item_id }}">
+                        data-item-id="{{ item.item_id }}" data-menu-name="{{ item.menu_name }}">
                         <span>{{ item.menu_name }} <span class="badge bg-info text-dark rounded-pill">x{{ item.quantity
                                 }}</span></span>
-                        <div>
+                        <div class="check-actions">
                             {% for i in range(item.checks_required) %}
-                            <input class="form-check-input item-checkbox" type="checkbox" {% if i <
-                                item.checks_completed %}checked{% endif %}
-                                onchange="handleCheck(this, {{ item.item_id }})">
+                            <label class="check-label">
+                                <input class="btn-check item-checkbox" type="checkbox" data-check-index="{{ i }}" {% if
+                                    i < item.checks_completed %}checked{% endif %}
+                                    onchange="handleCheck(this, {{ item.item_id }})">
+                                <span class="btn btn-sm btn-outline-primary">
+                                    {% if item.menu_name == '짜파게티' and i == 0 %}
+                                    조리팀
+                                    {% elif item.menu_name == '짜파게티' and i == 1 %}
+                                    서빙팀
+                                    {% elif item.checks_required == 1 %}
+                                    완료
+                                    {% else %}
+                                    완료 {{ i + 1 }}
+                                    {% endif %}
+                                </span>
+                            </label>
                             {% endfor %}
                         </div>
                     </li>
@@ -78,14 +110,27 @@
                     <ul class="list-group list-group-flush">
                         {% for item in order['items'] %}
                         <li class="list-group-item d-flex justify-content-between align-items-center"
-                            data-item-id="{{ item.item_id }}">
+                            data-item-id="{{ item.item_id }}" data-menu-name="{{ item.menu_name }}">
                             <span>{{ item.menu_name }} <span class="badge bg-info text-dark rounded-pill">x{{
                                     item.quantity }}</span></span>
-                            <div>
+                            <div class="check-actions">
                                 {% for i in range(item.checks_required) %}
-                                <input class="form-check-input item-checkbox" type="checkbox" {% if i <
-                                    item.checks_completed %}checked{% endif %}
-                                    onchange="handleCheck(this, {{ item.item_id }})">
+                                <label class="check-label">
+                                    <input class="btn-check item-checkbox" type="checkbox" data-check-index="{{ i }}" {%
+                                        if i < item.checks_completed %}checked{% endif %}
+                                        onchange="handleCheck(this, {{ item.item_id }})">
+                                    <span class="btn btn-sm btn-outline-primary">
+                                        {% if item.menu_name == '짜파게티' and i == 0 %}
+                                        조리팀
+                                        {% elif item.menu_name == '짜파게티' and i == 1 %}
+                                        서빙팀
+                                        {% elif item.checks_required == 1 %}
+                                        완료
+                                        {% else %}
+                                        완료 {{ i + 1 }}
+                                        {% endif %}
+                                    </span>
+                                </label>
                                 {% endfor %}
                             </div>
                         </li>
@@ -118,6 +163,8 @@
     // 체크박스 제어
     function handleCheck(checkbox, itemId) {
         const li = checkbox.closest('li');
+        const previousChecked = checkbox.checked;
+        updateSequentialChecks(li);
         const checkedCount = li.querySelectorAll('.item-checkbox:checked').length;
 
         fetch('/admin/update_check', {
@@ -127,9 +174,39 @@
         }).then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
+                    updateSequentialChecks(li);
                     checkOrderCompletion(li.closest('.order-card-wrapper'));
+                } else {
+                    checkbox.checked = !previousChecked;
+                    updateSequentialChecks(li);
+                    alert(data.message || '체크 상태를 변경하지 못했습니다.');
                 }
+            }).catch(() => {
+                checkbox.checked = !previousChecked;
+                updateSequentialChecks(li);
+                alert('네트워크 오류로 체크 상태를 변경하지 못했습니다.');
             });
+    }
+
+    function updateSequentialChecks(scope = document) {
+        const items = scope.matches?.('li[data-menu-name="짜파게티"]')
+            ? [scope]
+            : Array.from(scope.querySelectorAll('li[data-menu-name="짜파게티"]'));
+
+        items.forEach(item => {
+            const checkboxes = item.querySelectorAll('.item-checkbox');
+            const cooking = checkboxes[0];
+            const serving = checkboxes[1];
+
+            if (!cooking || !serving) return;
+
+            if (!cooking.checked) {
+                serving.checked = false;
+            }
+
+            serving.disabled = !cooking.checked;
+            serving.nextElementSibling.classList.toggle('disabled', serving.disabled);
+        });
     }
 
     // 주문 완료 상태 체크 (카드 위아래 이동)
@@ -160,9 +237,22 @@
         cards.forEach(card => container.appendChild(card));
     }
 
-    // 10초마다 자동 새로고침
-    setTimeout(function () {
-        window.location.reload();
+    let lastInteractionAt = Date.now();
+
+    ['click', 'change', 'keydown', 'touchstart'].forEach(eventName => {
+        window.addEventListener(eventName, () => {
+            lastInteractionAt = Date.now();
+        }, { passive: true });
+    });
+
+    // 10초마다 새 주문을 확인하되, 조작 직후에는 화면이 튀지 않도록 다음 주기로 미룹니다.
+    setInterval(function () {
+        const isRecentlyActive = Date.now() - lastInteractionAt < 5000;
+        if (!isRecentlyActive) {
+            window.location.reload();
+        }
     }, 10000);
+
+    updateSequentialChecks();
 </script>
 {% endblock %}
