@@ -70,13 +70,24 @@
         .cart-badge {
             min-width: 28px;
         }
+
+        .top-actions {
+            display: flex;
+            gap: 6px;
+        }
     </style>
 </head>
 
 <body>
     <div class="bg-primary text-white p-3 sticky-top shadow-sm d-flex justify-content-between align-items-center">
         <h4 class="mb-0 text-center">Table {{ table_no }}</h4>
-        <a href="/my_orders" class="btn btn-sm btn-light fw-bold">주문 내역</a>
+        <div class="top-actions">
+            <a href="/my_orders" class="btn btn-sm btn-light fw-bold">주문 내역</a>
+            <form action="{{ url_for('customer_logout') }}" method="POST"
+                onsubmit="sessionStorage.removeItem('cart');">
+                <button type="submit" class="btn btn-sm btn-outline-light fw-bold">로그아웃</button>
+            </form>
+        </div>
     </div>
 
     <div class="container mt-3">

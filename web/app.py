@@ -243,9 +243,25 @@ def customer_history():
     )
     rows = cursor.fetchall()
     conn.close()
+
+    total_amount = 0
+    for row in rows:
+        row["subtotal"] = row["price"] * row["quantity"]
+        total_amount += row["subtotal"]
+
     return render_template(
-        "customer_history.html", orders=rows, table_no=session["table_no"]
+        "customer_history.html",
+        orders=rows,
+        table_no=session["table_no"],
+        total_amount=total_amount,
     )
+
+
+@app.route("/customer/logout", methods=["POST"])
+def customer_logout():
+    session.pop("customer_session_id", None)
+    session.pop("table_no", None)
+    return redirect(url_for("customer_home"))
 
 
 # ==========================================
