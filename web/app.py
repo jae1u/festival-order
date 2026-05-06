@@ -1,4 +1,5 @@
 import os
+import re
 import time
 from datetime import timedelta
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, flash
@@ -43,24 +44,26 @@ def check_admin_login():
 @app.route('/', methods=['GET', 'POST'])
 def customer_home():
     if request.method == 'POST':
-        table_no_str = request.form.get('table_no')
-        name = request.form.get('customer_name')
-        phone = request.form.get('customer_phone')
-        org = request.form.get('organization')
+        table_no_str = (request.form.get('table_no') or '').strip()
+        name = (request.form.get('customer_name') or '').strip()
+        phone = (request.form.get('customer_phone') or '').strip()
+        org = (request.form.get('organization') or '').strip()
 
-        # 💡 [방어 1] 테이블 번호 검증 (빈 값, 문자열 차단)
         if not table_no_str or not table_no_str.isdigit():
             return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
             
         table_no = int(table_no_str)
         
-        # 💡 [방어 2] MySQL INT 범위(2,147,483,647) 및 논리적 범위(0 이하) 차단
         if table_no <= 0 or table_no > 2147483647:
             return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
 
-        # 💡 [방어 3] 이름, 전화번호, 소속 길이 제한 (DB 오버플로우 에러 차단)
-        # (기존에 name을 TEXT로 바꾸셨더라도, 너무 긴 쓰레기값 테러를 막기 위해 적절히 제한)
-        if (name and len(name) > 20) or (phone and len(phone) > 13) or (org and len(org) > 20):
+        if not name or not org:
+            return "<script>alert('이름과 소속 단체명을 입력해주세요!'); window.location.href='/';</script>"
+
+        if not re.fullmatch(r"\d{10,11}", phone):
+            return "<script>alert('전화번호는 숫자 10자리 또는 11자리로 입력해주세요!'); window.location.href='/';</script>"
+
+        if len(name) > 20 or len(org) > 20:
             return "<script>alert('입력값이 너무 깁니다!'); window.location.href='/';</script>"
 
         details = []

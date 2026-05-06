@@ -13,6 +13,10 @@
             max-width: 500px;
             margin: auto;
         }
+
+        .form-text {
+            min-height: 1.25rem;
+        }
     </style>
 </head>
 
@@ -20,27 +24,131 @@
     <div class="card shadow-sm mt-4">
         <div class="card-body p-4">
             <h3 class="card-title text-center mb-4">환영합니다! 👋</h3>
-            <form action="/" method="POST">
+            <form action="/" method="POST" id="customerLoginForm" novalidate>
                 <div class="mb-3">
                     <label class="form-label text-muted">테이블 번호</label>
-                    <input type="number" name="table_no" class="form-control form-control-lg" required>
+                    <input type="text" name="table_no" id="tableNo" class="form-control form-control-lg"
+                        inputmode="numeric" maxlength="10" autocomplete="off" required aria-describedby="tableNoHelp">
+                    <div id="tableNoHelp" class="form-text validation-message">1 이상의 숫자로 입력해주세요.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted">주문자 이름</label>
-                    <input type="text" name="customer_name" class="form-control form-control-lg" required>
+                    <input type="text" name="customer_name" id="customerName" class="form-control form-control-lg"
+                        maxlength="20" autocomplete="name" required aria-describedby="nameHelp">
+                    <div id="nameHelp" class="form-text validation-message">20자 이내로 입력해주세요.</div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label text-muted">전화번호</label>
-                    <input type="tel" name="customer_phone" class="form-control form-control-lg" required>
+                    <input type="tel" name="customer_phone" id="customerPhone" class="form-control form-control-lg"
+                        inputmode="numeric" maxlength="11" autocomplete="tel" placeholder="01012345678" required
+                        aria-describedby="phoneHelp">
+                    <div id="phoneHelp" class="form-text validation-message">하이픈 없이 숫자 10자리 또는 11자리로 입력해주세요.</div>
                 </div>
                 <div class="mb-4">
                     <label class="form-label text-muted">소속 단체명</label>
-                    <input type="text" name="organization" class="form-control form-control-lg" required>
+                    <input type="text" name="organization" id="organization" class="form-control form-control-lg"
+                        maxlength="20" placeholder="없을 경우 개인으로 입력해주세요." required
+                        aria-describedby="organizationHelp">
+                    <div id="organizationHelp" class="form-text validation-message">20자 이내로 입력해주세요.</div>
                 </div>
-                <button type="submit" class="btn btn-primary btn-lg w-100">메뉴판 보기</button>
+                <button type="submit" id="submitButton" class="btn btn-primary btn-lg w-100" disabled>메뉴판 보기</button>
             </form>
         </div>
     </div>
+
+    <script>
+        const form = document.getElementById('customerLoginForm');
+        const submitButton = document.getElementById('submitButton');
+        const fields = {
+            tableNo: document.getElementById('tableNo'),
+            customerName: document.getElementById('customerName'),
+            customerPhone: document.getElementById('customerPhone'),
+            organization: document.getElementById('organization'),
+        };
+
+        const rules = {
+            tableNo(value) {
+                if (!value) return { valid: false, message: '테이블 번호를 입력해주세요.' };
+                const number = Number(value);
+                if (!Number.isInteger(number) || number <= 0) {
+                    return { valid: false, message: '1 이상의 숫자로 입력해주세요.' };
+                }
+                if (number > 2147483647) {
+                    return { valid: false, message: '테이블 번호가 너무 큽니다.' };
+                }
+                return { valid: true, message: '확인되었습니다.' };
+            },
+            customerName(value) {
+                if (!value) return { valid: false, message: '주문자 이름을 입력해주세요.' };
+                if (value.length > 20) return { valid: false, message: '20자 이내로 입력해주세요.' };
+                return { valid: true, message: '확인되었습니다.' };
+            },
+            customerPhone(value) {
+                if (!value) return { valid: false, message: '전화번호를 입력해주세요.' };
+                if (!/^\d{10,11}$/.test(value)) {
+                    return { valid: false, message: '숫자 10자리 또는 11자리로 입력해주세요.' };
+                }
+                return { valid: true, message: '확인되었습니다.' };
+            },
+            organization(value) {
+                if (!value) return { valid: false, message: '소속이 없으면 개인으로 입력해주세요.' };
+                if (value.length > 20) return { valid: false, message: '20자 이내로 입력해주세요.' };
+                return { valid: true, message: '확인되었습니다.' };
+            },
+        };
+
+        function sanitizeNumeric(input) {
+            const onlyDigits = input.value.replace(/\D/g, '');
+            if (input.value !== onlyDigits) {
+                input.value = onlyDigits;
+            }
+        }
+
+        function setFieldState(input, result) {
+            const message = document.getElementById(input.getAttribute('aria-describedby'));
+            input.classList.toggle('is-valid', result.valid);
+            input.classList.toggle('is-invalid', !result.valid && input.value.length > 0);
+            message.textContent = result.message;
+            message.classList.toggle('text-success', result.valid);
+            message.classList.toggle('text-danger', !result.valid && input.value.length > 0);
+            message.classList.toggle('text-muted', !result.valid && input.value.length === 0);
+        }
+
+        function validateForm() {
+            const results = {
+                tableNo: rules.tableNo(fields.tableNo.value.trim()),
+                customerName: rules.customerName(fields.customerName.value.trim()),
+                customerPhone: rules.customerPhone(fields.customerPhone.value.trim()),
+                organization: rules.organization(fields.organization.value.trim()),
+            };
+
+            Object.entries(results).forEach(([key, result]) => {
+                setFieldState(fields[key], result);
+            });
+
+            submitButton.disabled = !Object.values(results).every(result => result.valid);
+        }
+
+        [fields.tableNo, fields.customerPhone].forEach(input => {
+            input.addEventListener('input', () => {
+                sanitizeNumeric(input);
+                validateForm();
+            });
+        });
+
+        [fields.customerName, fields.organization].forEach(input => {
+            input.addEventListener('input', validateForm);
+        });
+
+        form.addEventListener('submit', event => {
+            validateForm();
+            if (submitButton.disabled) {
+                event.preventDefault();
+            }
+        });
+
+        validateForm();
+    </script>
 </body>
 
 </html>
