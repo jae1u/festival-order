@@ -43,19 +43,32 @@ def check_admin_login():
 @app.route('/', methods=['GET', 'POST'])
 def customer_home():
     if request.method == 'POST':
-        table_no = request.form.get('table_no')
+        table_no_str = request.form.get('table_no')
         name = request.form.get('customer_name')
         phone = request.form.get('customer_phone')
         org = request.form.get('organization')
 
-        # 💡 [수정] 소속과 전화번호를 리스트에 담아 동적으로 결합
+        # 💡 [방어 1] 테이블 번호 검증 (빈 값, 문자열 차단)
+        if not table_no_str or not table_no_str.isdigit():
+            return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
+            
+        table_no = int(table_no_str)
+        
+        # 💡 [방어 2] MySQL INT 범위(2,147,483,647) 및 논리적 범위(0 이하) 차단
+        if table_no <= 0 or table_no > 2147483647:
+            return "<script>alert('유효하지 않은 테이블 번호입니다!'); window.location.href='/';</script>"
+
+        # 💡 [방어 3] 이름, 전화번호, 소속 길이 제한 (DB 오버플로우 에러 차단)
+        # (기존에 name을 TEXT로 바꾸셨더라도, 너무 긴 쓰레기값 테러를 막기 위해 적절히 제한)
+        if (name and len(name) > 20) or (phone and len(phone) > 13) or (org and len(org) > 20):
+            return "<script>alert('입력값이 너무 깁니다!'); window.location.href='/';</script>"
+
         details = []
         if org:
             details.append(org)
         if phone:
             details.append(phone)
             
-        # details에 값이 있으면 '이름(소속, 전화번호)', 없으면 '이름'만
         name_with_details = f"{name}({', '.join(details)})" if details else name
 
         conn = get_db_connection()
@@ -130,107 +143,79 @@ def customer_menu():
     )
 
 
-@app.route("/api/order", methods=["POST"])
+@app.route('/api/order', methods=['POST'])
 def place_order():
-    if "customer_session_id" not in session:
+    if 'customer_session_id' not in session:
         return jsonify({"status": "redirect", "url": "/"}), 401
-
-    cart = request.json.get("cart", [])
-    if not cart:
-        return jsonify({"status": "error"}), 400
-
+    
+    cart = request.json.get('cart', [])
+    if not isinstance(cart, list) or not cart:
+        return jsonify({"status": "error", "message": "장바구니 형식이 잘못되었습니다."}), 400
+        
     conn = get_db_connection()
     cursor = conn.cursor()
-
+    
     try:
-        # 💡 [마이너스 수량 및 품절 검증]
         valid_cart = []
         soldout_items = []
-
+        
         for item in cart:
-            if item["quantity"] <= 0:
-                continue  # 수량이 0 이하거나 마이너스면 무시 (API 해킹 방어)
+            if 'name' not in item or 'quantity' not in item:
+                continue
+                
+            try:
+                qty = int(item['quantity'])
+            except (ValueError, TypeError):
+                continue
 
-            cursor.execute(
-                "SELECT price, checks_required, is_soldout FROM menus WHERE name = %s",
-                (item["name"],),
-            )
+            # 💡 [방어 추가] 0 이하 무시 및 1000개 이상 비정상 주문 테러 차단
+            if qty <= 0 or qty > 1000:
+                continue 
+                
+            cursor.execute("SELECT price, checks_required, is_soldout FROM menus WHERE name = %s", (item['name'],))
             menu_db = cursor.fetchone()
-
+            
             if menu_db:
-                if menu_db["is_soldout"]:
-                    soldout_items.append(
-                        item["name"]
-                    )  # 장바구니에 담아뒀는데 그 사이 품절된 경우
+                if menu_db['is_soldout']:
+                    soldout_items.append(item['name'])
                 else:
-                    valid_cart.append(
-                        {
-                            "name": item["name"],
-                            "price": menu_db["price"],
-                            "quantity": item["quantity"],
-                            "checks_required": menu_db["checks_required"],
-                        }
-                    )
-
-        # 품절된 항목이 발견되면 결제를 멈추고 클라이언트에 알림
+                    valid_cart.append({
+                        'name': item['name'],
+                        'price': menu_db['price'],
+                        'quantity': qty,
+                        'checks_required': menu_db['checks_required']
+                    })
+                    
         if soldout_items:
             return jsonify({"status": "soldout", "soldout_items": soldout_items})
-
+            
         if not valid_cart:
-            return (
-                jsonify({"status": "error", "message": "유효한 주문이 없습니다."}),
-                400,
-            )
+            return jsonify({"status": "error", "message": "유효한 주문이 없습니다."}), 400
 
-        # 기존 Race Condition 방어 및 저장 로직
-        cursor.execute(
-            "SELECT status FROM table_sessions WHERE id = %s FOR UPDATE",
-            (session["customer_session_id"],),
-        )
+        cursor.execute("SELECT status FROM table_sessions WHERE id = %s FOR UPDATE", (session['customer_session_id'],))
         row = cursor.fetchone()
-
-        if not row or row["status"] != "ACTIVE":
-            session.pop("customer_session_id", None)
-            session.pop("table_no", None)
-            return (
-                jsonify(
-                    {
-                        "status": "redirect",
-                        "message": "정산이 완료되어 이용이 종료되었습니다.",
-                        "url": "/",
-                    }
-                ),
-                403,
-            )
-
-        cursor.execute(
-            "INSERT INTO orders (session_id) VALUES (%s)",
-            (session["customer_session_id"],),
-        )
+        
+        if not row or row['status'] != 'ACTIVE':
+            session.pop('customer_session_id', None)
+            session.pop('table_no', None)
+            return jsonify({"status": "redirect", "message": "정산이 완료되어 이용이 종료되었습니다.", "url": "/"}), 403
+        
+        cursor.execute("INSERT INTO orders (session_id) VALUES (%s)", (session['customer_session_id'],))
         order_id = cursor.lastrowid
-
+        
         for item in valid_cart:
-            cursor.execute(
-                """
+            cursor.execute("""
                 INSERT INTO order_items (order_id, menu_name, price, quantity, checks_required)
                 VALUES (%s, %s, %s, %s, %s)
-            """,
-                (
-                    order_id,
-                    item["name"],
-                    item["price"],
-                    item["quantity"],
-                    item["checks_required"],
-                ),
-            )
-
+            """, (order_id, item['name'], item['price'], item['quantity'], item['checks_required']))
+                
         conn.commit()
     except Exception as e:
         conn.rollback()
         return jsonify({"status": "error"}), 500
     finally:
         conn.close()
-
+        
     return jsonify({"status": "success"})
 
 
