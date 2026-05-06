@@ -24,6 +24,7 @@
         <a href="/menu" class="text-white text-decoration-none fs-4">←</a>
         <h4 class="mb-0 flex-grow-1">Table {{ table_no }} 주문 내역</h4>
         <form action="{{ url_for('customer_logout') }}" method="POST" onsubmit="sessionStorage.removeItem('cart');">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-sm btn-outline-light fw-bold">로그아웃</button>
         </form>
     </div>

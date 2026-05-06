@@ -146,12 +146,14 @@
 
 {% block extra_js %}
 <script>
+    const csrfToken = '{{ csrf_token() }}';
+
     // 주문 삭제
     function deleteOrder(orderId, btnElement) {
         if (!confirm('주문 #' + orderId + '을(를) 정말 삭제하시겠습니까?\n(삭제 시 정산 금액에서도 제외됩니다.)')) {
             return;
         }
-        fetch('/admin/delete_order/' + orderId, { method: 'POST' })
+        fetch('/admin/delete_order/' + orderId, { method: 'POST', headers: { 'X-CSRF-Token': csrfToken } })
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
@@ -169,7 +171,7 @@
 
         fetch('/admin/update_check', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
             body: JSON.stringify({ item_id: itemId, checks_completed: checkedCount })
         }).then(response => response.json())
             .then(data => {
