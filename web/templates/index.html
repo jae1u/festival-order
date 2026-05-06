@@ -74,6 +74,8 @@
                                     조리팀
                                     {% elif item.menu_name == '짜파게티' and i == 1 %}
                                     서빙팀
+                                    {% elif item.checks_required == 1 %}
+                                    완료
                                     {% else %}
                                     완료 {{ i + 1 }}
                                     {% endif %}
@@ -122,6 +124,8 @@
                                         조리팀
                                         {% elif item.menu_name == '짜파게티' and i == 1 %}
                                         서빙팀
+                                        {% elif item.checks_required == 1 %}
+                                        완료
                                         {% else %}
                                         완료 {{ i + 1 }}
                                         {% endif %}
