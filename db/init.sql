@@ -4,7 +4,7 @@ USE order_db;
 CREATE TABLE menus (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) UNIQUE,
-    price INT,
+    price BIGINT NOT NULL,
     checks_required INT,
     image_url VARCHAR(255),
     is_soldout BOOLEAN DEFAULT FALSE
@@ -44,7 +44,7 @@ CREATE TABLE order_items (
     id INT AUTO_INCREMENT PRIMARY KEY,
     order_id INT,
     menu_name VARCHAR(50),
-    price INT,
+    price BIGINT NOT NULL,
     quantity INT,
     checks_required INT,
     checks_completed INT DEFAULT 0,
